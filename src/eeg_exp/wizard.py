@@ -68,28 +68,20 @@ def _looks_sane(values: list[list[float]]) -> tuple[bool, str]:
 def _try_capture(
     is_research: bool, n: int = 32, timeout_s: float = 8.0
 ) -> tuple[list[list[float]], list[list[int]], int | None, str | None]:
-    from emokit.emotiv import Emotiv
-
-    from .reader import CHANNELS
+    from .reader import CHANNELS, read
 
     samples: list[list[float]] = []
     qualities: list[list[int]] = []
     battery: int | None = None
     try:
         deadline = time.time() + timeout_s
-        with Emotiv(display_output=False, is_research=is_research) as headset:
-            while len(samples) < n and time.time() < deadline:
-                packet = headset.dequeue()
-                if packet is None:
-                    time.sleep(0.005)
-                    continue
-                samples.append(
-                    [float(packet.sensors[c]["value"]) for c in CHANNELS]
-                )
-                qualities.append(
-                    [int(packet.sensors[c]["quality"]) for c in CHANNELS]
-                )
-                battery = int(packet.battery)
+        for s in read(is_research=is_research):
+            samples.append(s["values"])
+            qualities.append([s["quality"][c] for c in CHANNELS])
+            if s["battery"] is not None:
+                battery = s["battery"]
+            if len(samples) >= n or time.time() >= deadline:
+                break
     except Exception as e:
         return samples, qualities, battery, f"{type(e).__name__}: {e}"
     return samples, qualities, battery, None
@@ -116,7 +108,6 @@ def run(skip_checklist: bool = False) -> int:
     _step(1, total, "checking python deps")
     try:
         import hid  # noqa: F401
-        import emokit  # noqa: F401
         import Crypto  # noqa: F401
     except ImportError as e:
         print(f"  FAIL: {e}")
@@ -180,14 +171,14 @@ def run(skip_checklist: bool = False) -> int:
 
     _step(5, total, "summary")
     last_q = qualities[-1] if qualities else [0] * len(CHANNELS)
-    q_line = " ".join(f"{c}={q}" for c, q in zip(CHANNELS, last_q))
+    q_line = " ".join(f"{c}={q // 540}" for c, q in zip(CHANNELS, last_q))
     print(f"  schema:   {schema}")
     print(
         f"  battery:  {battery}%"
         if battery is not None
         else "  battery:  unknown"
     )
-    print(f"  contacts: {q_line}    (0 = worst, 4 = best)")
+    print(f"  contacts: {q_line}    (0 = nothing, 4 = excellent)")
     print()
     print("ready. next:")
     prefix = "" if schema == "consumer" else "--research "

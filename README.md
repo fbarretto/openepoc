@@ -9,9 +9,14 @@ training, BCI control, generative interfaces, sonification, etc.
 
 The EPOC 1.0 dongle enumerates as a USB HID device delivering 32-byte
 AES-128-ECB encrypted reports at 128 Hz. The official Cortex SDK no longer
-supports this model, so we use the reverse-engineered
-[openyou/emokit](https://github.com/openyou/emokit) library, which derives the
-AES key from the headset serial. From there, samples are pushed to:
+supports this model. We talk to the dongle directly via `cython-hidapi`,
+derive the AES key from the headset's USB serial, decrypt with `pycryptodome`,
+and unpack the 14 channels (14 bits each, packed across the 32-byte frame)
+in `src/eeg_exp/reader.py`. The bit-position table and key derivation are
+vendored from the public [openyou/emokit](https://github.com/openyou/emokit)
+project (MIT) — no runtime dependency on it.
+
+From there, samples are pushed to:
 
 - **LSL** (Lab Streaming Layer) via [`pylsl`](https://github.com/labstreaminglayer/pylsl) — the research-standard wire format. Consumed by LabRecorder, OpenViBE, MNE-LSL, BCILAB, NeuroPype, etc.
 - **OSC** via [`python-osc`](https://github.com/attwad/python-osc) — for TouchDesigner, Max/MSP, SuperCollider, Unity, p5.js (via osc-bridge), and similar creative-coding clients.
@@ -56,13 +61,39 @@ pip install -e ".[analysis]"
 
 ## macOS permissions
 
-On Ventura+ you must grant **Input Monitoring** to both your terminal
-(Terminal.app / iTerm2) AND the Python interpreter binary in
-`System Settings > Privacy & Security > Input Monitoring`. Otherwise HID reads
-silently return nothing — no error is raised.
+Two separate permission systems can block this on Apple Silicon Macs.
 
-Also: quit any installed EmotivPRO / Xavier / Emotiv Control Panel apps before
-running. Their background services grab the HID interface exclusively.
+### 1. Allow accessories to connect (the big one)
+
+System Settings > **Privacy & Security** > scroll to the **Security** section
+> **"Allow accessories to connect"**. Set this to **"Ask for new accessories"**
+or **"Always"**. If it's restrictive and you accidentally dismissed an earlier
+prompt, the deny is cached and the dongle gets stuck mid-enumeration
+(`UsbEnumerationState=2`, `!matched, !registered` in `ioreg`) — no driver
+binds, no app can see it. Symptoms: `system_profiler SPUSBDataType` shows the
+dongle but `ioreg` shows no child interfaces and `hid.enumerate()` returns
+nothing.
+
+If you suspect a stale deny, clear the cache and replug:
+
+```bash
+sudo defaults delete /Library/Preferences/com.apple.security.usbaccessories 2>&1
+sudo killall -HUP cfprefsd
+```
+
+Then unplug, wait 30 seconds, replug. macOS should prompt; click Allow.
+
+### 2. Input Monitoring (less critical)
+
+System Settings > **Privacy & Security** > **Input Monitoring**. Add your
+terminal app (Terminal.app / iTerm2) and toggle it on. Sequoia/Ventura don't
+accept raw Python binaries here — the terminal grant is sufficient.
+
+### 3. Avoid driver collisions
+
+Quit any installed EmotivPRO / Xavier / Emotiv Control Panel / Emotiv Launcher
+apps before running. Their background services can hold the HID interface
+exclusively.
 
 ## Usage
 
@@ -156,10 +187,11 @@ raw = mne.io.RawArray(data, mne.create_info(labels, sfreq, "eeg"))
 
 ```
 src/eeg_exp/
-    reader.py       emokit wrapper, yields Sample dicts
+    reader.py       hid + AES decode loop, yields Sample dicts
     lsl_outlet.py   pylsl StreamOutlet factory
     osc_outlet.py   python-osc client + send helpers
-    cli.py          eeg-exp verify | stream
+    wizard.py       eeg-exp wizard (connection + diagnostics)
+    cli.py          eeg-exp wizard | verify | stream
 examples/
     stream.py       minimal LSL + OSC fan-out
 ```
@@ -168,10 +200,13 @@ examples/
 
 | Symptom | Likely cause |
 |---|---|
-| `verify` prints nothing | Input Monitoring not granted, or another Emotiv app is holding the HID interface |
-| All-zero or flat values | Wrong AES schema — try `--research` |
-| `hid.HIDException: open failed` | Dongle not detected; replug, check `system_profiler SPUSBDataType` |
-| Samples arrive but contact quality dict looks wrong | Normal — quality byte rotates through sensor IDs each packet |
+| Wizard step 2 fails: "no Emotiv-like HID device found" but `system_profiler` sees the dongle | "Allow accessories to connect" denied/dismissed. See macOS permissions above. |
+| `ioreg` shows the dongle as `!matched, !registered, UsbEnumerationState=2` | Same as above — accessory access blocked at the kernel layer. |
+| `verify` prints nothing | Terminal needs Input Monitoring, or another Emotiv app is holding the HID interface |
+| All-zero or flat values | Wrong AES schema — try `eeg-exp --research verify` |
+| `hid.HIDException: open failed` | Dongle vanished mid-session; replug |
+| Samples arrive but contact quality stays at 0 for some channels | Felt pads not saline-soaked, or sensor not making firm scalp contact |
+| Battery shows under 10% | Charge via mini-USB on the back of the headband (~6h for full charge) |
 
 ## License
 
