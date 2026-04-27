@@ -9,7 +9,7 @@ and copy-paste-friendly into your own project.
 | 01 | [`01_record_csv.py`](01_record_csv.py) | Record N seconds to a CSV file (default 5s, default `recording.csv`) | none |
 | 02 | [`02_stream_osc.py`](02_stream_osc.py) | Stream samples to OSC, bundled or per-channel | `openepoc[osc]` |
 | 03 | [`03_api_server.py`](03_api_server.py) | Expose readings over HTTP + WebSocket (FastAPI) | `fastapi`, `uvicorn` |
-| 04 | [`04_touchdesigner/`](04_touchdesigner/README.md) | Receive OSC inside TouchDesigner | (uses 02) |
+| 04 | [`04_touchdesigner/`](04_touchdesigner/README.md) | Read directly inside TouchDesigner via a Script CHOP (no OSC bridge) | (TD's bundled Python) |
 
 ## Running them
 
@@ -38,15 +38,22 @@ structure works for SSE if you prefer that over WebSockets. The `/latest`
 endpoint shows how to expose just the most recent sample for polling clients
 that don't want a live stream.
 
-**`04_touchdesigner/`** — recipe for consuming the OSC stream from `02` inside
-TouchDesigner. No code in TD beyond an `OSC In CHOP`.
+**`04_touchdesigner/`** — `openepoc_chop.py` is a Script CHOP callback file:
+paste it into TD's `Callbacks DAT` and a Script CHOP outputs 14 channels at
+128 Hz, no separate process or OSC bridge. The folder's README walks through
+TD's Python compatibility, install path, and how to extend the channel set
+with gyro / battery / contact quality.
 
 ## Composing examples
 
 The four are designed to combine. Common pairings:
 
-- **02 + 04**: capture host runs `02_stream_osc.py --per-channel`, TD on the
-  same or another machine consumes via `OSC In CHOP`.
+- **04 alone (preferred for TD)**: paste `openepoc_chop.py` into a Script
+  CHOP's Callbacks DAT, no other process needed.
+- **02 + 04 (fallback)**: only if TD is on a different machine than the
+  dongle, or TD's Python can't load `hidapi` for some platform reason — run
+  `02_stream_osc.py --per-channel` and consume the OSC stream in TD with an
+  `OSC In CHOP` instead of the Script CHOP path.
 - **03 + a webpage**: run `03_api_server.py`, hit the `/stream` WebSocket from
   a small p5.js / d3 / whatever frontend.
 - **01 + offline analysis**: record sessions with `01`, batch-process the CSVs

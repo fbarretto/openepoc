@@ -1,82 +1,145 @@
 # TouchDesigner integration
 
-OSC is the cleanest path from `openepoc` into TouchDesigner. The host machine
-runs `examples/02_stream_osc.py`, TD listens with an `OSC In CHOP`. Both
-machines can be the same physical box (loopback) or different ones on the same
-LAN.
+Cleanest path: a **Script CHOP** that imports `openepoc` directly and emits
+14 channels of live EEG at 128 Hz. No OSC bridge, no separate process — TD's
+own Python interpreter runs the reader.
 
-This folder doesn't ship a binary `.tox` — TD components are saved from inside
-TouchDesigner and not generated from text. What follows is the network recipe
-that takes ~2 minutes to build the first time.
+The script is in [`openepoc_chop.py`](openepoc_chop.py). Background thread
+drains samples from the dongle into a ring buffer; each TD cook flushes the
+buffer into the CHOP's time-sliced samples.
 
-## 1. Start the OSC stream on the capture host
+## Setup
 
-```bash
-cd /path/to/openepoc
-source .venv/bin/activate
-python examples/02_stream_osc.py --per-channel
-```
+### 1. Match Python versions
 
-Default destination is `127.0.0.1:9000`, address pattern `/eeg/<channel>`.
-With `--per-channel`, each EEG channel arrives at its own OSC address
-(`/eeg/AF3`, `/eeg/F7`, ...) which makes TD setup trivial. Without
-`--per-channel`, all 14 channels arrive in one bundled message at `/eeg`,
-and TD will create channels named `chan1..chan14` that you'll want to rename.
+TouchDesigner ships its own Python. Whatever package you use has to be ABI-
+compatible with that interpreter (because `hidapi` is a C extension).
 
-## 2. In TouchDesigner: minimal network
+Check TD's version: open TD, `Help > About TouchDesigner` shows Python X.Y. As
+of TD 2023.1+, that's **Python 3.11**.
 
-```
-[ OSC In CHOP ] -> [ Null CHOP ] -> [ rest of your network ]
-```
+### 2. Install openepoc into TD's Python
 
-### OSC In CHOP parameters
+Two options. Option A (recommended) keeps your project isolated; option B is a
+one-shot global install.
 
-- **Network Port**: `9000`
-- **Active**: `On`
+#### A. Project-local venv referenced from TD
 
-That's it for per-channel mode. TD discovers each `/eeg/<label>` and creates
-one CHOP channel per name. AF3, F7, etc. show up automatically.
-
-For bundled mode (without `--per-channel`):
-- The CHOP gets channels named `chan1..chan14`
-- Use a `Rename CHOP` after it with the from/to lists
-  (`From: chan1 chan2 chan3 ...`, `To: AF3 F7 F3 FC5 ...`)
-- Order matches `openepoc.CHANNELS`: `AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4, F8, AF4`
-
-## 3. Cross-machine setup
-
-If TD runs on a different box than the capture host, point the streamer at
-TD's IP:
+Build a venv with TD's Python version, install openepoc into it, then point
+TD at the venv's `site-packages`:
 
 ```bash
-python examples/02_stream_osc.py --per-channel --host 192.168.1.42
+python3.11 -m venv /Users/<you>/code/openepoc-td/.venv
+source /Users/<you>/code/openepoc-td/.venv/bin/activate
+pip install git+https://github.com/fbarretto/openepoc.git
+deactivate
 ```
 
-Make sure firewall allows UDP on the chosen port.
+In TD: `Edit > Preferences > Python > Python 64-bit Module Path`. Add:
 
-## 4. What to do with the channels
+```
+/Users/<you>/code/openepoc-td/.venv/lib/python3.11/site-packages
+```
 
-Once channels reach TD, anything is fair game:
+Restart TD.
 
-- `Math CHOP` to scale microvolts into 0..1 for parameter binding
-- `Filter CHOP` for moving averages / smoothing (raw EEG is noisy)
-- `Analyze CHOP` for FFT into bands (alpha/beta/theta)
-- `Audio Spectrum CHOP` for sonification
-- Per-channel CHOP-to-DAT exports for logging
+#### B. Pip-install into TD's bundled Python
 
-A common starting pattern: low-pass filter to ~30 Hz to drop high-frequency
-noise, then `Analyze CHOP` to turn each channel into a band-power feed
-(alpha / beta / theta), bind those to visual parameters.
+```bash
+/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/3.11/bin/python3 \
+    -m pip install git+https://github.com/fbarretto/openepoc.git
+```
 
-## 5. Health check
+Every TD project on this machine then has openepoc available. Cleaner if you
+don't want to touch Preferences; messier if you want isolation between
+projects.
 
-If channels are dead-flat at 0:
+### 3. macOS permissions
 
-- Run `openepoc wizard --no-checklist` on the capture host to confirm packets
-  are arriving from the dongle in the first place
-- Check the OSC In CHOP's `Bytes In` parameter — if it's 0, packets aren't
-  reaching TD: firewall, port, or wrong host
-- Confirm felt pads are saline-soaked and the headset is on
+TouchDesigner needs the same permissions any other HID consumer needs on
+Apple Silicon Macs:
 
-If the stream rate looks wrong (TD shows 0.something Hz instead of 128 Hz),
-TD is sometimes slow to compute the rate display — wait 5 seconds.
+- `System Settings > Privacy & Security > Allow accessories to connect`:
+  ensure it's `Ask for new accessories` or `Always`. (See the main
+  [`../../README.md`](../../README.md) for the full story — this is the
+  hardest blocker on M-series Macs.)
+- `Input Monitoring`: add `TouchDesigner.app` and toggle on.
+
+Quit any other Emotiv apps that might hold the HID interface (EmotivPRO,
+Xavier, Launcher).
+
+### 4. Wire it up in TD
+
+1. Create a `Script CHOP`
+2. Open its `Callbacks DAT` (Text DAT inside the CHOP)
+3. Replace its contents with [`openepoc_chop.py`](openepoc_chop.py)
+4. Cook the CHOP
+
+You should see 14 channels (`AF3`, `F7`, ..., `AF4`) at 128 Hz. Hook a
+`Trail CHOP` after it for a quick visualizer.
+
+## Extending the script
+
+The default CHOP outputs only the 14 EEG channels. To add gyro / counter /
+battery / contact quality, edit the cook callback. The `Sample` TypedDict you
+get from `openepoc` carries:
+
+```python
+sample["values"]   # list[float] of 14 channel values
+sample["counter"]  # int 0..127 packet sequence
+sample["gyro"]     # (gx, gy)
+sample["battery"]  # int 0..100 or None
+sample["quality"]  # dict[str, int] per-channel contact quality
+```
+
+To add `gyro_x`, `gyro_y`, `counter`:
+
+```python
+EXTRA = ("counter", "gyro_x", "gyro_y")
+ALL_CHANS = CHANNELS + EXTRA
+
+# in onCook, replace the channel-setup and fill block:
+if scriptOp.numChans != len(ALL_CHANS):
+    scriptOp.clear()
+    for name in ALL_CHANS:
+        scriptOp.appendChan(name)
+
+scriptOp.numSamples = len(samples)
+for j, name in enumerate(CHANNELS):
+    chan = scriptOp[name]
+    for i, s in enumerate(samples):
+        chan[i] = s["values"][j]
+counter_chan = scriptOp["counter"]
+gx_chan = scriptOp["gyro_x"]
+gy_chan = scriptOp["gyro_y"]
+for i, s in enumerate(samples):
+    counter_chan[i] = s["counter"]
+    gx_chan[i] = s["gyro"][0]
+    gy_chan[i] = s["gyro"][1]
+```
+
+Same pattern for battery (note: only present in some packets — guard with
+`s["battery"] or 0`).
+
+## Troubleshooting
+
+| Symptom | Likely cause |
+|---|---|
+| `openepoc not importable inside TouchDesigner's Python` | Module Path not set in Preferences, or pointing at the wrong site-packages, or Python version mismatch (TD is 3.11, your venv is 3.12+) |
+| All-zero values forever | Headset off, contact pads dry, or wrong AES schema. Run `openepoc wizard` from a terminal to confirm signal is arriving |
+| Reader thread crashes (operator shows error) | Most often dongle was unplugged. Re-plug, then right-click the Script CHOP and `Reset` |
+| 14 channels show but signal looks junky / clipping | EEG is microvolt-scale, raw values can be ±8000. Use a `Math CHOP` to scale, or `Limit CHOP` for hard bounds |
+| TD frame rate drops when CHOP cooks | Reduce buffer drain frequency: insert a `CHOP Execute` that triggers cooks at 60 Hz, or increase `_buffer.maxlen` so you don't lose samples between cooks |
+
+## Why not OSC?
+
+OSC works (and we have [`02_stream_osc.py`](../02_stream_osc.py) for it) but
+adds:
+- A separate Python process to launch and babysit
+- UDP serialization roundtrip per packet
+- One more thing that can silently fail (port conflicts, firewalls,
+  loopback weirdness)
+
+The Script CHOP path keeps everything in one process. Use OSC only if TD is on
+a different machine than the dongle, or if TD's Python won't load `hidapi` for
+some platform reason.
