@@ -121,48 +121,45 @@ CHOP.
 `td.scriptDAT` and look like `'td.scriptDAT' object has no attribute 'rate'`.
 Delete it, create a Script CHOP instead, paste the script there.
 
-## Extending the script
+## Channels emitted
 
-The default CHOP outputs only the 14 EEG channels. To add gyro / counter /
-battery / contact quality, edit the cook callback. The `Sample` TypedDict you
-get from `openepoc` carries:
+By default the Script CHOP outputs **32 channels**:
+
+| Group | Names | Notes |
+|---|---|---|
+| EEG | `AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4, F8, AF4` | Raw 14-bit signed, ±8192-ish range. Use a Math CHOP to scale into microvolts (≈ ×0.51). |
+| Gyro | `gyro_x, gyro_y` | 2-axis only — EPOC 1.0 has no accelerometer (that's EPOC+). |
+| Contact quality | `q_AF3 ... q_AF4` | Raw bits, ~0..2200. Divide by 540 for the 0..4 quality scale. |
+| Battery | `battery` | 0..100. Only present in some packets; we emit `0` when absent. |
+| Counter | `counter` | 0..127 packet sequence. Useful for detecting dropped packets — gaps mean RF loss. |
+
+To **drop a group**, edit the top of `openepoc_chop.py` and flip its
+`EMIT_*` flag to `False`:
 
 ```python
-sample["values"]   # list[float] of 14 channel values
-sample["counter"]  # int 0..127 packet sequence
+EMIT_GYRO = True
+EMIT_QUALITY = True
+EMIT_BATTERY = True
+EMIT_COUNTER = True
+```
+
+To **filter for visualization**, drop a `Select CHOP` after the Script
+CHOP and set its `Channel Names` parameter:
+
+- `AF3 F7 F3 ...` — only specific EEG channels
+- `q_*` — only contact quality channels
+- `gyro_*` — only the gyro
+- `* ^q_*` — everything except contact quality (CHOP wildcard pattern)
+
+The full `Sample` shape from `openepoc` for reference:
+
+```python
+sample["values"]   # list[float], 14 channels
+sample["counter"]  # int 0..127
 sample["gyro"]     # (gx, gy)
-sample["battery"]  # int 0..100 or None
-sample["quality"]  # dict[str, int] per-channel contact quality
+sample["battery"]  # int 0..100, or None when not in this packet
+sample["quality"]  # dict[str, int], per-channel rolling
 ```
-
-To add `gyro_x`, `gyro_y`, `counter`:
-
-```python
-EXTRA = ("counter", "gyro_x", "gyro_y")
-ALL_CHANS = CHANNELS + EXTRA
-
-# in onCook, replace the channel-setup and fill block:
-if scriptOp.numChans != len(ALL_CHANS):
-    scriptOp.clear()
-    for name in ALL_CHANS:
-        scriptOp.appendChan(name)
-
-scriptOp.numSamples = len(samples)
-for j, name in enumerate(CHANNELS):
-    chan = scriptOp[name]
-    for i, s in enumerate(samples):
-        chan[i] = s["values"][j]
-counter_chan = scriptOp["counter"]
-gx_chan = scriptOp["gyro_x"]
-gy_chan = scriptOp["gyro_y"]
-for i, s in enumerate(samples):
-    counter_chan[i] = s["counter"]
-    gx_chan[i] = s["gyro"][0]
-    gy_chan[i] = s["gyro"][1]
-```
-
-Same pattern for battery (note: only present in some packets — guard with
-`s["battery"] or 0`).
 
 ## Troubleshooting
 
