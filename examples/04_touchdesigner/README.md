@@ -138,6 +138,7 @@ Same pattern for battery (note: only present in some packets — guard with
 | Symptom | Likely cause |
 |---|---|
 | `'td.scriptDAT' object has no attribute 'rate'` | You created a Script **DAT**, not a Script **CHOP**. Different operator families. Delete and add `CHOP > Script` instead. |
+| `numChans is unavailable for this CHOP while it is cooking` | Old version of the script that queried `scriptOp.numChans` mid-cook. Pull the latest `openepoc_chop.py` — current code does `clear()` + rebuild each cook. |
 | `openepoc not importable inside TouchDesigner's Python` | Module Path not set in Preferences, or pointing at the wrong site-packages, or Python version mismatch (TD is 3.11, your venv is 3.12+) |
 | All-zero values forever | Headset off, contact pads dry, or wrong AES schema. Run `openepoc wizard` from a terminal to confirm signal is arriving |
 | Reader thread crashes (operator shows error) | Most often dongle was unplugged. Re-plug, then right-click the Script CHOP and `Reset` |

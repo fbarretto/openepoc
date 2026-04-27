@@ -78,19 +78,15 @@ def onCook(scriptOp):
     while _buffer:
         samples.append(_buffer.popleft())
 
+    scriptOp.clear()
     scriptOp.rate = SAMPLE_RATE
-
-    if scriptOp.numChans != len(CHANNELS):
-        scriptOp.clear()
-        for name in CHANNELS:
-            scriptOp.appendChan(name)
+    chans = [scriptOp.appendChan(name) for name in CHANNELS]
 
     if not samples:
         scriptOp.numSamples = 1
         return
 
     scriptOp.numSamples = len(samples)
-    for j, name in enumerate(CHANNELS):
-        chan = scriptOp[name]
+    for j, chan in enumerate(chans):
         for i, s in enumerate(samples):
             chan[i] = s["values"][j]
