@@ -1,0 +1,1 @@
+openepoc[osc] @ git+https://github.com/fbarretto/openepoc.git

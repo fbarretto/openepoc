@@ -1,12 +1,30 @@
 # TouchDesigner integration
 
 Cleanest path: a **Script CHOP** that imports `openepoc` directly and emits
-14 channels of live EEG at 128 Hz. No OSC bridge, no separate process — TD's
-own Python interpreter runs the reader.
+EEG / gyro / contact-quality / battery / counter channels at 128 Hz. No OSC
+bridge, no separate process — TD's own Python interpreter runs the reader.
 
-The script is in [`openepoc_chop.py`](openepoc_chop.py). Background thread
-drains samples from the dongle into a ring buffer; each TD cook flushes the
-buffer into the CHOP's time-sliced samples.
+This folder ships:
+
+- [`openepoc.toe`](openepoc.toe) — a working TD project you can open and
+  run. Easiest way to see it working.
+- [`openepoc_chop.py`](openepoc_chop.py) — the Script CHOP callback file,
+  for pasting into a fresh project's docked DAT.
+- [`requirements.txt`](requirements.txt) — installs `openepoc` into TD's
+  bundled Python (see install section below).
+
+Background thread drains samples from the dongle into a ring buffer; each TD
+cook flushes the buffer into the CHOP's time-sliced samples. A `Tick`
+parameter bound to `absTime.seconds` forces continuous cooking; a `Channels`
+parameter page exposes per-group toggles (EEG / Gyro / Quality / Battery /
+Counter) that you can flip live in TD.
+
+## Quickest path: open `openepoc.toe`
+
+1. Install openepoc into TD's bundled Python (see below)
+2. Plug the dongle in, put the headset on
+3. Double-click `openepoc.toe`
+4. The Script CHOP starts streaming channels immediately
 
 ## Setup
 
@@ -45,9 +63,11 @@ Restart TD.
 
 #### B. Pip-install into TD's bundled Python
 
+This is what `requirements.txt` does — point pip at TD's interpreter:
+
 ```bash
-/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/3.11/bin/python3 \
-    -m pip install git+https://github.com/fbarretto/openepoc.git
+/Applications/TouchDesigner.app/Contents/Frameworks/Python.framework/Versions/3.11/bin/python3.11 \
+    -m pip install -r requirements.txt
 ```
 
 Every TD project on this machine then has openepoc available. Cleaner if you

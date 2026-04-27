@@ -1,0 +1,3 @@
+openepoc @ git+https://github.com/fbarretto/openepoc.git
+fastapi
+uvicorn[standard]
