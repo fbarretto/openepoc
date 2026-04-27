@@ -70,13 +70,25 @@ Xavier, Launcher).
 
 ### 4. Wire it up in TD
 
-1. Create a `Script CHOP`
-2. Open its `Callbacks DAT` (Text DAT inside the CHOP)
-3. Replace its contents with [`openepoc_chop.py`](openepoc_chop.py)
-4. Cook the CHOP
+**The operator must be a Script CHOP, not a Script DAT.** TD has multiple
+"Script" operators across families (CHOP, DAT, SOP, TOP) — they share a name
+but have totally different APIs. We're generating channel data, so it's a
+CHOP.
 
-You should see 14 channels (`AF3`, `F7`, ..., `AF4`) at 128 Hz. Hook a
-`Trail CHOP` after it for a quick visualizer.
+1. Right-click in the network → `Add Operator` → `CHOP` tab → find **Script**
+   (the icon is `script1` with a CHOP outline). Or press Tab and type
+   `Script CHOP`.
+2. TD auto-creates a docked Text DAT named `script1_callbacks` next to it.
+   Open that DAT.
+3. Replace its contents with [`openepoc_chop.py`](openepoc_chop.py).
+4. The Script CHOP cooks automatically. You should see 14 channels (`AF3`,
+   `F7`, ..., `AF4`) at 128 Hz.
+
+Hook a `Trail CHOP` after it for a quick scrolling visualizer.
+
+**If you accidentally created a Script DAT**: errors will mention
+`td.scriptDAT` and look like `'td.scriptDAT' object has no attribute 'rate'`.
+Delete it, create a Script CHOP instead, paste the script there.
 
 ## Extending the script
 
@@ -125,6 +137,7 @@ Same pattern for battery (note: only present in some packets — guard with
 
 | Symptom | Likely cause |
 |---|---|
+| `'td.scriptDAT' object has no attribute 'rate'` | You created a Script **DAT**, not a Script **CHOP**. Different operator families. Delete and add `CHOP > Script` instead. |
 | `openepoc not importable inside TouchDesigner's Python` | Module Path not set in Preferences, or pointing at the wrong site-packages, or Python version mismatch (TD is 3.11, your venv is 3.12+) |
 | All-zero values forever | Headset off, contact pads dry, or wrong AES schema. Run `openepoc wizard` from a terminal to confirm signal is arriving |
 | Reader thread crashes (operator shows error) | Most often dongle was unplugged. Re-plug, then right-click the Script CHOP and `Reset` |

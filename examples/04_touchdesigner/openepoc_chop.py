@@ -1,5 +1,11 @@
 """
-openepoc reader for TouchDesigner — paste into a Script CHOP's Callbacks DAT.
+openepoc reader for TouchDesigner — paste into a Script CHOP's docked
+Callbacks DAT.
+
+This file targets a Script CHOP (operator family: CHOP, type: Script).
+Pasting it into a Script DAT (the table type) will fail with errors like
+"'td.scriptDAT' object has no attribute 'rate'" — different operator
+family, different API.
 
 Outputs 14 EEG channels (AF3, F7, F3, FC5, T7, P7, O1, O2, P8, T8, FC6, F4,
 F8, AF4) at 128 Hz as a time-sliced CHOP stream. A background thread drains
