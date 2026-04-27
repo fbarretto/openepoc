@@ -57,16 +57,29 @@ projects.
 ### 3. macOS permissions
 
 TouchDesigner needs the same permissions any other HID consumer needs on
-Apple Silicon Macs:
+Apple Silicon Macs. **Both** are required.
 
-- `System Settings > Privacy & Security > Allow accessories to connect`:
-  ensure it's `Ask for new accessories` or `Always`. (See the main
-  [`../../README.md`](../../README.md) for the full story — this is the
-  hardest blocker on M-series Macs.)
-- `Input Monitoring`: add `TouchDesigner.app` and toggle on.
+- **`Allow accessories to connect`**: System Settings → Privacy & Security →
+  scroll to Security → set this to `Ask for new accessories` or `Always`.
+  (See the main [`../../README.md`](../../README.md) for the full story —
+  this is what stalls the dongle at `UsbEnumerationState=2` if denied.)
+- **`Input Monitoring`**: System Settings → Privacy & Security →
+  Input Monitoring. Click `+`, add `/Applications/TouchDesigner.app`,
+  toggle it on. Without this, the reader thread crashes inside TD with
+  `open failed` even though the same dongle works fine from the terminal.
+  Shortcut to that pane:
+
+  ```bash
+  open "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent"
+  ```
+
+  After granting, **fully quit TouchDesigner** (Cmd+Q) and relaunch — TCC
+  only re-checks permissions at process start.
 
 Quit any other Emotiv apps that might hold the HID interface (EmotivPRO,
-Xavier, Launcher).
+Xavier, Launcher). And no other terminal can be running `openepoc verify`,
+`openepoc wizard`, or `openepoc stream` — macOS HID is single-reader, and
+whoever opened the dongle first holds it.
 
 ### 4. Wire it up in TD
 
@@ -161,6 +174,7 @@ Same pattern for battery (note: only present in some packets — guard with
 | `openepoc not importable inside TouchDesigner's Python` | Module Path not set in Preferences, or pointing at the wrong site-packages, or Python version mismatch (TD is 3.11, your venv is 3.12+) |
 | All-zero values forever | Headset off, contact pads dry, or wrong AES schema. Run `openepoc wizard` from a terminal to confirm signal is arriving |
 | Reader thread crashes (operator shows error) | Most often dongle was unplugged. Re-plug, then right-click the Script CHOP and `Reset` |
+| `reader thread crashed: open failed` | TouchDesigner.app needs Input Monitoring permission. See macOS permissions section above. Grant it, then **fully quit and relaunch TD**. Or another process is holding the dongle (close any `openepoc` CLI in a terminal). |
 | 14 channels show but signal looks junky / clipping | EEG is microvolt-scale, raw values can be ±8000. Use a `Math CHOP` to scale, or `Limit CHOP` for hard bounds |
 | TD frame rate drops when CHOP cooks | Reduce buffer drain frequency: insert a `CHOP Execute` that triggers cooks at 60 Hz, or increase `_buffer.maxlen` so you don't lose samples between cooks |
 
