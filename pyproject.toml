@@ -3,25 +3,45 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "eeg-exp"
+name = "openepoc"
 version = "0.1.0"
-description = "Live raw EEG capture from Emotiv EPOC 1.0 with LSL and OSC outlets"
+description = "Open-source raw EEG capture from the Emotiv EPOC 1.0 dongle"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 authors = [{ name = "fbarretto" }]
+keywords = ["eeg", "bci", "emotiv", "epoc", "hid", "lsl", "osc"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+]
 dependencies = [
     "hidapi",
     "pycryptodome",
-    "pylsl",
-    "python-osc",
 ]
 
 [project.optional-dependencies]
+lsl = ["pylsl"]
+osc = ["python-osc"]
+stream = ["pylsl", "python-osc"]
 analysis = ["mne", "numpy", "scipy"]
+all = ["pylsl", "python-osc", "mne", "numpy", "scipy"]
 
 [project.scripts]
-eeg-exp = "eeg_exp.cli:main"
+openepoc = "openepoc.cli:main"
+
+[project.urls]
+Repository = "https://github.com/fbarretto/openepoc"
+Issues = "https://github.com/fbarretto/openepoc/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+openepoc = ["py.typed"]
