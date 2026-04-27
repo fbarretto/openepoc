@@ -171,6 +171,7 @@ sample["quality"]  # dict[str, int], per-channel rolling
 | `'td.scriptDAT' object has no attribute 'rate'` | You created a Script **DAT**, not a Script **CHOP**. Different operator families. Delete and add `CHOP > Script` instead. |
 | `numChans is unavailable for this CHOP while it is cooking` | Old version of the script that queried `scriptOp.numChans` mid-cook. Pull the latest `openepoc_chop.py` — current code does `clear()` + rebuild each cook. |
 | All 14 channels show value `0` and never change | Script CHOP isn't cooking past its first cook. Pull the latest `openepoc_chop.py` — it adds an `onGetCookLevel` callback and a hidden `Tick` parameter bound to `absTime.seconds` that together force per-frame cooking. As a manual fallback, connect a `Trail CHOP` downstream. |
+| `Tick` parameter shows `0` and never advances | Tick is in constant mode instead of expression mode. Right-click the Tick parameter → choose **Expression** → enter `absTime.seconds`. Or pull the latest script (it sets `tick_par.mode = ParMode.EXPRESSION` explicitly). |
 | `openepoc not importable inside TouchDesigner's Python` | Module Path not set in Preferences, or pointing at the wrong site-packages, or Python version mismatch (TD is 3.11, your venv is 3.12+) |
 | All-zero values forever | Headset off, contact pads dry, or wrong AES schema. Run `openepoc wizard` from a terminal to confirm signal is arriving |
 | Reader thread crashes (operator shows error) | Most often dongle was unplugged. Re-plug, then right-click the Script CHOP and `Reset` |

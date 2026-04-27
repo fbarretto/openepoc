@@ -97,6 +97,11 @@ def onSetupParameters(scriptOp):
         tick_par.default = 0.0
         tick_par.defaultExpr = "absTime.seconds"
         tick_par.defaultMode = ParMode.EXPRESSION
+        # The default* properties only apply on parameter reset. Set the
+        # CURRENT expr/mode too so the parameter is live in expression mode
+        # immediately after Setup Parameters runs.
+        tick_par.expr = "absTime.seconds"
+        tick_par.mode = ParMode.EXPRESSION
 
         # Channels page: toggles for each output group. Flip these in TD's
         # parameter editor to filter what the CHOP exposes. Defaults: all on.
