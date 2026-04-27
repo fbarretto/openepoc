@@ -81,17 +81,19 @@ CHOP.
 2. TD auto-creates a docked Text DAT named `script1_callbacks` next to it.
    Open that DAT.
 3. Replace its contents with [`openepoc_chop.py`](openepoc_chop.py).
-4. **Make the CHOP cook every frame.** TD only cooks operators on demand by
-   default. Without this step, `script1` cooks once at startup, finds an
-   empty buffer, and channels stay at `0` forever even though the reader
-   thread is filling the buffer. Two ways to fix it (either is fine):
+4. The script handles continuous cooking on its own. TD's default cook model
+   is on-demand: a Script CHOP without inputs would cook once at startup
+   and never again. The script works around this two ways automatically:
 
-   - **Drop a `Trail CHOP` after `script1`.** The Trail CHOP cooks every
-     frame to scroll its display, forcing the Script CHOP to cook too.
-     Side benefit: you get a live oscilloscope view of all 14 channels for
-     free. This is the recommended path.
-   - Or: on the Script CHOP's **Common** parameter page, toggle
-     **Time Slice** to **On**. TD then cooks the CHOP every frame natively.
+   - **`onGetCookLevel` callback** returning `CookLevel.ALWAYS` — the
+     documented primary method on modern TD builds.
+   - **Hidden `Tick` custom parameter** bound to `absTime.seconds` — creates
+     a per-frame dependency that forces cooking on any TD build, including
+     older versions that don't expose `CookLevel`.
+
+   You don't need to wire any inputs or drop a downstream Trail CHOP unless
+   you want one for visualization. (If you do drop a Trail CHOP, that also
+   forces cooking, just via a different mechanism.)
 
 5. Channels (`AF3`, `F7`, ..., `AF4`) should now update live at ~128 Hz.
 
@@ -148,7 +150,7 @@ Same pattern for battery (note: only present in some packets — guard with
 |---|---|
 | `'td.scriptDAT' object has no attribute 'rate'` | You created a Script **DAT**, not a Script **CHOP**. Different operator families. Delete and add `CHOP > Script` instead. |
 | `numChans is unavailable for this CHOP while it is cooking` | Old version of the script that queried `scriptOp.numChans` mid-cook. Pull the latest `openepoc_chop.py` — current code does `clear()` + rebuild each cook. |
-| All 14 channels show value `0` and never change | Script CHOP isn't cooking past its first cook. Connect a `Trail CHOP` downstream of it (forces per-frame cooking), or toggle the Common page's `Time Slice` to `On`. |
+| All 14 channels show value `0` and never change | Script CHOP isn't cooking past its first cook. Pull the latest `openepoc_chop.py` — it adds an `onGetCookLevel` callback and a hidden `Tick` parameter bound to `absTime.seconds` that together force per-frame cooking. As a manual fallback, connect a `Trail CHOP` downstream. |
 | `openepoc not importable inside TouchDesigner's Python` | Module Path not set in Preferences, or pointing at the wrong site-packages, or Python version mismatch (TD is 3.11, your venv is 3.12+) |
 | All-zero values forever | Headset off, contact pads dry, or wrong AES schema. Run `openepoc wizard` from a terminal to confirm signal is arriving |
 | Reader thread crashes (operator shows error) | Most often dongle was unplugged. Re-plug, then right-click the Script CHOP and `Reset` |

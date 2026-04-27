@@ -59,7 +59,26 @@ def _start_reader_once() -> None:
 
 
 def onSetupParameters(scriptOp):
-    return
+    # Add a hidden 'tick' parameter bound to absTime.seconds. The expression
+    # re-evaluates every frame, creating a dependency that forces the Script
+    # CHOP to cook each frame even though it has no operator inputs. This is
+    # the canonical workaround documented on the Derivative forum.
+    try:
+        page = scriptOp.appendCustomPage("Tick")
+        p = page.appendFloat("Tick")[0]
+        p.expr = "absTime.seconds"
+    except Exception:
+        pass
+
+
+def onGetCookLevel(scriptOp):
+    # Newer TD builds support a CookLevel enum to declare always-cook directly.
+    # If the attribute isn't present (older builds), the absTime parameter
+    # added in onSetupParameters keeps cooking ticking.
+    try:
+        return scriptOp.CookLevel.ALWAYS
+    except AttributeError:
+        return None
 
 
 def onPulse(par):
