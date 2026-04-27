@@ -34,15 +34,20 @@ CHANNELS = (
 )
 SAMPLE_RATE = 128
 
-# Optional extra channels. Set any of these to False to drop the group.
-# EPOC 1.0 has a 2-axis gyroscope only (no accelerometer — that's EPOC+).
-EMIT_GYRO = True
-EMIT_QUALITY = True
-EMIT_BATTERY = True
-EMIT_COUNTER = True
-
+# Channel-group toggles default to True if the corresponding custom parameter
+# hasn't been created yet (i.e. user hasn't clicked Setup Parameters). Once
+# the parameters exist, their UI values override these defaults — so you can
+# turn channel groups on and off live from TD's parameter editor without
+# editing this file.
 GYRO_CHANNELS = ("gyro_x", "gyro_y")
 QUALITY_CHANNELS = tuple(f"q_{c}" for c in CHANNELS)
+
+
+def _emit(scriptOp, par_name: str, default: bool = True) -> bool:
+    p = getattr(scriptOp.par, par_name, None)
+    if p is None:
+        return default
+    return bool(p.eval())
 
 _buffer: deque = deque(maxlen=4096)
 _reader_started = False
@@ -76,20 +81,37 @@ def _start_reader_once() -> None:
 
 
 def onSetupParameters(scriptOp):
-    # Add a 'Tick' parameter whose default expression is absTime.seconds.
-    # absTime.seconds advances every frame, the parameter re-evaluates,
-    # the dependency forces the Script CHOP to cook every frame.
     # IMPORTANT: this only runs when you click "Setup Parameters" in the
     # Script CHOP's parameter panel, not when this DAT is edited.
     try:
-        page = scriptOp.appendCustomPage("Tick")
-        result = page.appendFloat("Tick", label="Tick")
-        p = result[0] if isinstance(result, (list, tuple)) else result
-        p.default = 0.0
-        p.defaultExpr = "absTime.seconds"
-        p.defaultMode = ParMode.EXPRESSION
+        # Tick page: forces continuous cooking via an absTime.seconds
+        # dependency. Without this, a Script CHOP with no operator inputs
+        # cooks once at startup and never again.
+        tick_page = scriptOp.appendCustomPage("Tick")
+        tick_result = tick_page.appendFloat("Tick", label="Tick")
+        tick_par = (
+            tick_result[0]
+            if isinstance(tick_result, (list, tuple))
+            else tick_result
+        )
+        tick_par.default = 0.0
+        tick_par.defaultExpr = "absTime.seconds"
+        tick_par.defaultMode = ParMode.EXPRESSION
+
+        # Channels page: toggles for each output group. Flip these in TD's
+        # parameter editor to filter what the CHOP exposes. Defaults: all on.
+        ch_page = scriptOp.appendCustomPage("Channels")
+        for name, label in (
+            ("Eeg", "EEG (14 ch)"),
+            ("Gyro", "Gyro (gyro_x, gyro_y)"),
+            ("Quality", "Contact quality (q_*)"),
+            ("Battery", "Battery"),
+            ("Counter", "Packet counter"),
+        ):
+            par = ch_page.appendToggle(name, label=label)
+            par = par[0] if isinstance(par, (list, tuple)) else par
+            par.default = True
     except Exception as e:
-        # If something goes wrong, surface it on next cook.
         global _reader_error
         if _reader_error is None:
             _reader_error = f"onSetupParameters failed: {e}"
@@ -121,36 +143,44 @@ def onCook(scriptOp):
     while _buffer:
         samples.append(_buffer.popleft())
 
+    emit_eeg = _emit(scriptOp, "Eeg")
+    emit_gyro = _emit(scriptOp, "Gyro")
+    emit_quality = _emit(scriptOp, "Quality")
+    emit_battery = _emit(scriptOp, "Battery")
+    emit_counter = _emit(scriptOp, "Counter")
+
     scriptOp.clear()
     scriptOp.rate = SAMPLE_RATE
-    eeg_chans = [scriptOp.appendChan(name) for name in CHANNELS]
+
+    eeg_chans = [scriptOp.appendChan(name) for name in CHANNELS] if emit_eeg else []
     gyro_chans = (
-        [scriptOp.appendChan(name) for name in GYRO_CHANNELS] if EMIT_GYRO else []
+        [scriptOp.appendChan(name) for name in GYRO_CHANNELS] if emit_gyro else []
     )
     quality_chans = (
         [scriptOp.appendChan(name) for name in QUALITY_CHANNELS]
-        if EMIT_QUALITY
+        if emit_quality
         else []
     )
-    battery_chan = scriptOp.appendChan("battery") if EMIT_BATTERY else None
-    counter_chan = scriptOp.appendChan("counter") if EMIT_COUNTER else None
+    battery_chan = scriptOp.appendChan("battery") if emit_battery else None
+    counter_chan = scriptOp.appendChan("counter") if emit_counter else None
 
     if not samples:
         scriptOp.numSamples = 1
         return
 
     scriptOp.numSamples = len(samples)
-    for j, chan in enumerate(eeg_chans):
-        for i, s in enumerate(samples):
-            chan[i] = s["values"][j]
+    if emit_eeg:
+        for j, chan in enumerate(eeg_chans):
+            for i, s in enumerate(samples):
+                chan[i] = s["values"][j]
     for i, s in enumerate(samples):
-        if EMIT_GYRO:
+        if emit_gyro:
             gyro_chans[0][i] = s["gyro"][0]
             gyro_chans[1][i] = s["gyro"][1]
-        if EMIT_QUALITY:
+        if emit_quality:
             for j, name in enumerate(CHANNELS):
                 quality_chans[j][i] = s["quality"][name]
-        if EMIT_BATTERY:
+        if emit_battery:
             battery_chan[i] = s["battery"] if s["battery"] is not None else 0
-        if EMIT_COUNTER:
+        if emit_counter:
             counter_chan[i] = s["counter"]

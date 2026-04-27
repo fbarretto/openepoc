@@ -133,15 +133,18 @@ By default the Script CHOP outputs **32 channels**:
 | Battery | `battery` | 0..100. Only present in some packets; we emit `0` when absent. |
 | Counter | `counter` | 0..127 packet sequence. Useful for detecting dropped packets — gaps mean RF loss. |
 
-To **drop a group**, edit the top of `openepoc_chop.py` and flip its
-`EMIT_*` flag to `False`:
+To **drop a group**, toggle the corresponding checkbox on the Script CHOP's
+**Channels** parameter page. After clicking "Setup Parameters" once, you'll
+see five toggles:
 
-```python
-EMIT_GYRO = True
-EMIT_QUALITY = True
-EMIT_BATTERY = True
-EMIT_COUNTER = True
-```
+- `EEG (14 ch)`
+- `Gyro (gyro_x, gyro_y)`
+- `Contact quality (q_*)`
+- `Battery`
+- `Packet counter`
+
+Default: all on. Toggle live in the operator's parameter editor — no code
+edits or re-paste needed.
 
 To **filter for visualization**, drop a `Select CHOP` after the Script
 CHOP and set its `Channel Names` parameter:
